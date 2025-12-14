@@ -1,6 +1,17 @@
 ## Poke App
 
-Small Pokédex built with TanStack Start. The server hits [PokéAPI](https://pokeapi.co/) only once, stores the list in PostgreSQL, and every subsequent request reads from the database.
+Poke App is a minimal full-stack Pokédex:
+
+- **Frontend**: React 19 + TanStack Start/Router, Tailwind CSS for styling.
+- **Backend**: TanStack Start server functions backed by Prisma; the first request fetches data from [PokéAPI](https://pokeapi.co/) and caches it.
+- **Persistence**: PostgreSQL (via Prisma) when the database is available; otherwise, a JSON cache (`.cache/pokemon.json`) keeps the app usable until dependencies are installed.
+- **Tooling**: Vite dev server, Docker Compose for local infrastructure, ESLint/Prettier/Vitest for quality checks.
+
+Workflow:
+
+1. First visit to `/` calls PokéAPI (limit is configurable with `POKEDEX_LIMIT`).
+2. Seed results are stored in PostgreSQL through Prisma (or JSON fallback).
+3. All subsequent requests read from the local cache/database, giving instant responses even offline.
 
 ### Requirements
 
@@ -23,11 +34,18 @@ Small Pokédex built with TanStack Start. The server hits [PokéAPI](https://pok
    docker compose up --build
    ```
 
-   This command builds the `app` container, installs dependencies, starts the dev server on port 3000, and boots the `db` container with PostgreSQL plus the `pokeapp` database already created.
-
-3. If you prefer running the app on your host machine (instead of Docker), make sure a PostgreSQL server is accessible at your `DATABASE_URL`, then run:
+   Docker installs dependencies, runs `npm run dev`, and keeps PostgreSQL healthy. If you need Prisma to apply the schema (optional for Docker because the app auto-creates the table), run:
 
    ```bash
+   docker compose exec app npm run db:push
+   ```
+
+   after the services are running.
+
+3. Prefer running on your host machine? Ensure PostgreSQL is reachable at `DATABASE_URL`, then (optionally) push the schema before starting Vite:
+
+   ```bash
+   npm run db:push
    npm run dev
    ```
 
@@ -43,7 +61,7 @@ Every subsequent request uses only the database.
 
 ### Docker (app + PostgreSQL)
 
-- Use `docker compose up --build` to run the entire stack.
+- `docker compose up --build` runs the entire stack (dev server + PostgreSQL). Run `npm run db:push` inside the container if you need Prisma to manage the schema explicitly.
 - Stop everything with `docker compose down`. Use `-v` if you want to delete the persisted database volume (`pgdata`).
 
 ### Useful scripts
@@ -59,17 +77,18 @@ npm run format    # prettier
 
 ### Environment variables
 
-| Variable        | Description                                              | Default                                             |
-| --------------- | -------------------------------------------------------- | --------------------------------------------------- |
+| Variable        | Description                                              | Default                                               |
+| --------------- | -------------------------------------------------------- | ----------------------------------------------------- |
 | `DATABASE_URL`  | PostgreSQL connection string `postgres://user:pass@...` | `postgres://postgres:postgres@localhost:5432/pokeapp` |
-| `POKEDEX_LIMIT` | How many Pokémon to fetch from PokéAPI during the seed   | `151`                                               |
+| `POKEDEX_LIMIT` | How many Pokémon to fetch from PokéAPI during the seed   | `151`                                                 |
 
-> 💡 When the server connects to `DATABASE_URL`, it automatically creates the target database if it does not exist (as long as PostgreSQL itself is reachable).
+> 💾 If `@prisma/client` is not installed yet (for example, before `npm install` succeeds), the app falls back to `.cache/pokemon.json` so that `npm run dev` can still boot. Once dependencies are installed, run `npm run db:push` to sync the real PostgreSQL database.
 
 ### Relevant structure
 
-- `src/lib/db.ts`: lazily loads `pg` (when available) and falls back to JSON storage.
-- `src/server/pokemon.ts`: table management, seeding, and data fetching logic (uses the JSON fallback when PostgreSQL/`pg` is unavailable).
+- `prisma/schema.prisma`: Prisma schema for the Pokédex data (run `npm run db:push` to sync).
+- `src/lib/prisma.ts`: singleton Prisma Client instance.
+- `src/server/pokemon.ts`: table management, seeding, and data fetching logic backed by Prisma.
 - `src/routes/index.tsx`: loader + UI rendering the Pokédex.
 
 > ⚠️ If `npm run lint` or `npm run dev` fail because `libicui18n.73.dylib` is missing, install `icu4c` (e.g. `brew install icu4c`) or update Node.js so that system dependency is available.

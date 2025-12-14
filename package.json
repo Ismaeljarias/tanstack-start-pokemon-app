@@ -9,7 +9,8 @@
     "test": "vitest run",
     "lint": "eslint",
     "format": "prettier",
-    "check": "prettier --write . && eslint --fix"
+    "check": "prettier --write . && eslint --fix",
+    "db:push": "npx prisma@5.20.0 db push"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.6",
@@ -21,7 +22,7 @@
     "@tanstack/router-plugin": "^1.132.0",
     "lucide-react": "^0.544.0",
     "nitro": "latest",
-    "pg": "^8.13.1",
+    "@prisma/client": "^5.20.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.0.6",
@@ -35,8 +36,8 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "@types/pg": "^8.11.10",
     "@vitejs/plugin-react": "^5.0.4",
+    "prisma": "^5.20.0",
     "jsdom": "^27.0.0",
     "prettier": "^3.5.3",
     "typescript": "^5.7.2",

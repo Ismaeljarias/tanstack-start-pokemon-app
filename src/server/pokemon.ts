@@ -1,50 +1,45 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import path from 'node:path'
-
 import { createServerFn } from '@tanstack/react-start'
 
-import { getPool } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import type { Pokemon } from '@/types/pokemon'
 
 const POKEDEX_LIMIT = Number(process.env.POKEDEX_LIMIT ?? 151)
-const FALLBACK_DB_PATH = path.join(process.cwd(), '.cache/pokemon.json')
+let schemaEnsured = false
 
-async function ensureFallbackStore() {
-  await mkdir(path.dirname(FALLBACK_DB_PATH), { recursive: true })
+type RawCapable = {
+  $executeRawUnsafe?: (sql: string) => Promise<unknown>
 }
 
-async function readFallbackPokemon(): Promise<Pokemon[]> {
-  try {
-    const buffer = await readFile(FALLBACK_DB_PATH, 'utf-8')
-    return JSON.parse(buffer) as Pokemon[]
-  } catch {
-    return []
-  }
-}
-
-async function writeFallbackPokemon(rows: Pokemon[]) {
-  await ensureFallbackStore()
-  await writeFile(FALLBACK_DB_PATH, JSON.stringify(rows, null, 2), 'utf-8')
-}
-
-async function ensureTable() {
-  const pool = await getPool()
-  if (!pool) {
-    await ensureFallbackStore()
+async function ensurePokemonTable() {
+  if (schemaEnsured) {
     return
   }
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS pokemon (
-      id SERIAL PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
-      sprite_url TEXT NOT NULL
-    );
+  const client = prisma as RawCapable
+  if (typeof client.$executeRawUnsafe !== 'function') {
+    schemaEnsured = true
+    return
+  }
+
+  await client.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Pokemon" (
+      "id" SERIAL PRIMARY KEY,
+      "dexNumber" INTEGER UNIQUE NOT NULL,
+      "name" TEXT NOT NULL,
+      "spriteUrl" TEXT NOT NULL,
+      "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `)
+  await client.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "Pokemon_dexNumber_key"
+    ON "Pokemon" ("dexNumber")
+  `)
+  schemaEnsured = true
 }
 
 async function seedPokemon(): Promise<Pokemon[]> {
-  const pool = await getPool()
+  await ensurePokemonTable()
   const response = await fetch(
     `https://pokeapi.co/api/v2/pokemon?limit=${POKEDEX_LIMIT}`,
   )
@@ -68,55 +63,34 @@ async function seedPokemon(): Promise<Pokemon[]> {
     return []
   }
 
-  if (!pool) {
-    const rows: Pokemon[] = entries.map((entry, index) => ({
-      id: index + 1,
+  await prisma.pokemon.createMany({
+    data: entries.map((entry, index) => ({
+      dexNumber: index + 1,
       name: entry.name,
       spriteUrl: entry.spriteUrl,
-    }))
-    await writeFallbackPokemon(rows)
-    return rows
-  }
-
-  const values = entries
-    .map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2})`)
-    .join(', ')
-  const params = entries.flatMap((entry) => [entry.name, entry.spriteUrl])
-
-  await pool.query(
-    `INSERT INTO pokemon (name, sprite_url)
-     VALUES ${values}
-     ON CONFLICT (name) DO NOTHING`,
-    params,
-  )
+    })),
+    skipDuplicates: true,
+  })
 
   return fetchPokemon()
 }
 
 async function fetchPokemon(): Promise<Pokemon[]> {
-  const pool = await getPool()
-  if (!pool) {
-    return readFallbackPokemon()
-  }
-
-  const { rows } = await pool.query<{
-    id: number
-    name: string
-    sprite_url: string
-  }>(`SELECT id, name, sprite_url FROM pokemon ORDER BY id ASC`)
+  await ensurePokemonTable()
+  const rows = await prisma.pokemon.findMany({
+    orderBy: { dexNumber: 'asc' },
+  })
 
   return rows.map((row) => ({
-    id: row.id,
+    id: row.dexNumber,
     name: row.name,
-    spriteUrl: row.sprite_url,
+    spriteUrl: row.spriteUrl,
   }))
 }
 
 export const listPokemon = createServerFn({
   method: 'GET',
 }).handler(async () => {
-  await ensureTable()
-
   const rows = await fetchPokemon()
 
   if (rows.length > 0) {
