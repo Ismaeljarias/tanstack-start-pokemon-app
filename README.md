@@ -4,7 +4,7 @@ Poke App is a minimal full-stack Pokédex:
 
 - **Frontend**: React 19 + TanStack Start/Router, Tailwind CSS for styling.
 - **Backend**: TanStack Start server functions backed by Prisma; the first request fetches data from [PokéAPI](https://pokeapi.co/) and caches it.
-- **Persistence**: PostgreSQL (via Prisma) when the database is available; otherwise, a JSON cache (`.cache/pokemon.json`) keeps the app usable until dependencies are installed.
+- **Persistence**: PostgreSQL with Prisma managing the schema (`npm run db:push`).
 - **Tooling**: Vite dev server, Docker Compose for local infrastructure, ESLint/Prettier/Vitest for quality checks.
 
 Workflow:
@@ -42,7 +42,7 @@ Workflow:
 
    after the services are running.
 
-3. Prefer running on your host machine? Ensure PostgreSQL is reachable at `DATABASE_URL`, then (optionally) push the schema before starting Vite:
+3. Prefer running on your host machine? Ensure PostgreSQL is reachable at `DATABASE_URL`, then push the schema before starting Vite:
 
    ```bash
    npm run db:push
@@ -81,8 +81,6 @@ npm run format    # prettier
 | --------------- | -------------------------------------------------------- | ----------------------------------------------------- |
 | `DATABASE_URL`  | PostgreSQL connection string `postgres://user:pass@...` | `postgres://postgres:postgres@localhost:5432/pokeapp` |
 | `POKEDEX_LIMIT` | How many Pokémon to fetch from PokéAPI during the seed   | `151`                                                 |
-
-> 💾 If `@prisma/client` is not installed yet (for example, before `npm install` succeeds), the app falls back to `.cache/pokemon.json` so that `npm run dev` can still boot. Once dependencies are installed, run `npm run db:push` to sync the real PostgreSQL database.
 
 ### Relevant structure
 
