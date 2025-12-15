@@ -8,7 +8,7 @@ export const Route = createFileRoute('/')({
 })
 
 function Pokedex() {
-  const pokemon = Route.useLoaderData() ?? []
+  const pokemons = Route.useLoaderData() ?? []
 
   return (
     <main className="min-h-screen bg-slate-950 text-white py-12">
@@ -25,31 +25,31 @@ function Pokedex() {
           </p>
         </header>
 
-        {pokemon.length === 0 ? (
+        {pokemons.length === 0 ? (
           <div className="text-center text-gray-400">
             <p>No Pokémon yet. Try refreshing.</p>
           </div>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {pokemon.map((mon) => (
+            {pokemons.map((pokemon) => (
               <li
-                key={mon.id}
+                key={pokemon.id}
                 className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/30 backdrop-blur"
               >
                 <div className="flex items-center gap-4">
                   <img
-                    src={mon.spriteUrl}
-                    alt={mon.name}
+                    src={pokemon.spriteUrl}
+                    alt={pokemon.name}
                     width={72}
                     height={72}
                     className="h-16 w-16 object-contain drop-shadow-[0_4px_12px_rgba(59,130,246,0.45)]"
                   />
                   <div>
                     <p className="text-xs uppercase tracking-widest text-gray-400">
-                      #{String(mon.id).padStart(3, '0')}
+                      #{String(pokemon.id).padStart(3, '0')}
                     </p>
                     <h2 className="text-xl font-semibold capitalize">
-                      {mon.name}
+                      {pokemon.name}
                     </h2>
                   </div>
                 </div>
