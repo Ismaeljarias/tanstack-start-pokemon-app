@@ -10,7 +10,9 @@
     "lint": "eslint",
     "format": "prettier",
     "check": "prettier --write . && eslint --fix",
-    "db:push": "npx prisma@5.20.0 db push"
+    "db:push": "npx prisma@5.20.0 db push",
+    "db:reset": "npx prisma@5.20.0 migrate reset --force --skip-seed",
+    "db:clean": "npx prisma@5.20.0 migrate reset --force --skip-seed"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.6",
