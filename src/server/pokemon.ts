@@ -3,11 +3,31 @@ import { createServerFn } from '@tanstack/react-start'
 import type { Pokemon } from '@/types/pokemon'
 import { prisma } from '@/lib/prisma'
 
-const POKEDEX_LIMIT = Number(process.env.POKEDEX_LIMIT ?? 151)
+const POKEDEX_LIMIT = Number.isFinite(Number(process.env.POKEDEX_LIMIT))
+  ? Number(process.env.POKEDEX_LIMIT)
+  : Infinity
+const BATCH_SIZE = 200
+
+async function getPokedexCount(): Promise<number> {
+  // Using pokemon-species to avoid alternate forms that lack sprites
+  const response = await fetch('https://pokeapi.co/api/v2/pokemon-species?limit=1')
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch Pokédex species count from PokéAPI')
+  }
+
+  const data = (await response.json()) as { count: number }
+  return data.count
+}
 
 async function seedPokemon(): Promise<Array<Pokemon>> {
+  const pokedexCount = await getPokedexCount()
+  const targetCount = Math.min(pokedexCount, POKEDEX_LIMIT)
+  if (targetCount === 0) {
+    return []
+  }
   const response = await fetch(
-    `https://pokeapi.co/api/v2/pokemon?limit=${POKEDEX_LIMIT}`,
+    `https://pokeapi.co/api/v2/pokemon-species?limit=${targetCount}`,
   )
 
   if (!response.ok) {
@@ -78,7 +98,15 @@ async function seedInitialPokemon(): Promise<void> {
   const count = await prisma.pokemon.count()
   if (count >= 50) return // Already have initial batch
 
-  const response = await fetch('https://pokeapi.co/api/v2/pokemon?limit=50')
+  const initialLimit = Math.max(
+    0,
+    Math.min(50, Number.isFinite(POKEDEX_LIMIT) ? POKEDEX_LIMIT : 50),
+  )
+  if (initialLimit === 0) return
+
+  const response = await fetch(
+    `https://pokeapi.co/api/v2/pokemon-species?limit=${initialLimit}`,
+  )
   const data = (await response.json()) as {
     results: Array<{ name: string }>
   }
@@ -97,38 +125,56 @@ async function seedInitialPokemon(): Promise<void> {
 
 // Load more Pokemon in background
 async function loadMorePokemon(): Promise<void> {
-  const currentCount = await prisma.pokemon.count()
-  const nextBatch = 50 // Load 50 more each time
-  const startId = currentCount + 1
-  const endId = Math.min(currentCount + nextBatch, POKEDEX_LIMIT)
+  const pokedexCount = await getPokedexCount()
+  const targetCount = Math.min(pokedexCount, POKEDEX_LIMIT)
 
-  if (startId > POKEDEX_LIMIT) return // Already have all Pokemon
+  if (targetCount === 0) return
 
-  const pokemonToAdd: Array<{ dexNumber: number; name: string; spriteUrl: string }> = []
-  for (let i = startId; i <= endId; i++) {
-    pokemonToAdd.push({
-      dexNumber: i,
-      name: `pokemon-${i}`, // Placeholder, we'll fetch real names
-      spriteUrl: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${i}.png`,
+  let currentCount = await prisma.pokemon.count()
+  // If older runs added form variants, trim anything beyond the official species count
+  if (currentCount > targetCount) {
+    await prisma.pokemon.deleteMany({
+      where: { dexNumber: { gt: targetCount } },
     })
+    currentCount = targetCount
   }
 
-  // Fetch real names from PokeAPI
-  const response = await fetch(`https://pokeapi.co/api/v2/pokemon?limit=${nextBatch}&offset=${currentCount}`)
-  if (response.ok) {
-    const data = (await response.json()) as {
-      results: Array<{ name: string }>
+  while (currentCount < targetCount) {
+    const startId = currentCount + 1
+    const batchSize = Math.min(BATCH_SIZE, targetCount - currentCount)
+
+    const pokemonToAdd: Array<{ dexNumber: number; name: string; spriteUrl: string }> = []
+    for (let i = 0; i < batchSize; i++) {
+      const dexNumber = startId + i
+      pokemonToAdd.push({
+        dexNumber,
+        name: `pokemon-${dexNumber}`, // Placeholder, we'll fetch real names
+        spriteUrl: `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dexNumber}.png`,
+      })
     }
-    
-    data.results.forEach((pokemon, idx) => {
-      pokemonToAdd[idx].name = pokemon.name
-    })
-  }
 
-  await prisma.pokemon.createMany({
-    data: pokemonToAdd,
-    skipDuplicates: true,
-  })
+    const response = await fetch(
+      `https://pokeapi.co/api/v2/pokemon-species?limit=${batchSize}&offset=${startId - 1}`,
+    )
+    if (response.ok) {
+      const data = (await response.json()) as {
+        results: Array<{ name: string }>
+      }
+
+      data.results.forEach((pokemon, idx) => {
+        if (pokemonToAdd[idx]) {
+          pokemonToAdd[idx].name = pokemon.name
+        }
+      })
+    }
+
+    await prisma.pokemon.createMany({
+      data: pokemonToAdd,
+      skipDuplicates: true,
+    })
+
+    currentCount += batchSize
+  }
 }
 
 // Get all Pokemon from DB (will load more in background as needed)
